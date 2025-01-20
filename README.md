@@ -73,6 +73,288 @@ The `pocketbase-async` package was inspired and guided in implementation by seve
 
 Furthermore, a lot of the API tests were adapted from Vaphes' work (licensed MIT).
 
+## Doc
+# PocketBase Python SDK 使用手册
+
+## 目录
+- [安装](#安装)
+- [基本用法](#基本用法)
+- [身份认证](#身份认证)
+- [记录操作](#记录操作)
+- [文件管理](#文件管理)
+- [实时订阅](#实时订阅)
+- [集合管理](#集合管理)
+- [备份管理](#备份管理)
+- [错误处理](#错误处理)
+
+## 安装
+
+```bash
+pip install pocketbase
+```
+
+## 基本用法
+
+首先需要创建一个 PocketBase 客户端实例:
+
+```python
+from pocketbase import PocketBase
+
+client = PocketBase('http://127.0.0.1:8090')  # 替换为你的 PocketBase 服务器地址
+```
+
+## 身份认证
+
+### 管理员认证
+
+```python
+# 管理员登录
+admin_auth = await client.admins.auth.with_password("admin@example.com", "password123")
+
+# 刷新管理员认证令牌
+await client.admins.auth.refresh()
+```
+
+### 用户认证
+
+```python
+# 用户登录
+auth_data = await client.collection("users").auth.with_password(
+    "user@example.com",
+    "password123"
+)
+
+# 刷新用户认证令牌
+await client.collection("users").auth.refresh()
+
+# OAuth2 认证
+oauth2_auth = await client.collection("users").auth.with_OAuth2({
+    "provider": "google",
+    "code": "auth_code",
+    "codeVerifier": "code_verifier",
+    "redirectUrl": "redirect_url"
+})
+
+# 获取认证方法
+auth_methods = await client.collection("users").auth.methods()
+```
+
+## 记录操作
+
+### 基本 CRUD 操作
+
+```python
+# 创建记录
+record = await client.collection("posts").create({
+    "title": "Hello world!",
+    "content": "This is my first post"
+})
+
+# 获取单条记录
+record = await client.collection("posts").get_one("RECORD_ID")
+
+# 获取记录列表
+records = await client.collection("posts").get_list(
+    page=1,
+    per_page=20,
+    options={
+        "sort": "-created",
+        "filter": "created >= '2024-01-01'"
+    }
+)
+
+# 获取所有记录
+all_records = await client.collection("posts").get_full_list(options={
+    "sort": "-created",
+    "filter": "status = true"
+})
+
+# 更新记录
+updated = await client.collection("posts").update("RECORD_ID", {
+    "title": "Updated title"
+})
+
+# 删除记录
+await client.collection("posts").delete("RECORD_ID")
+```
+
+### 高级查询
+
+```python
+# 使用过滤器
+filtered = await client.collection("posts").get_list(1, 20, {
+    "filter": "title ~ 'welcome' && created >= '2024-01-01'"
+})
+
+# 使用排序
+sorted_records = await client.collection("posts").get_list(1, 20, {
+    "sort": "-created,title"
+})
+
+# 获取第一条匹配记录
+first = await client.collection("posts").get_first({
+    "filter": "status = true"
+})
+```
+
+## 文件管理
+
+```python
+# 上传文件
+record = await client.collection("posts").create({
+    "title": "Post with image",
+    "image": FileUpload(("image.jpg", open("image.jpg", "rb")))
+})
+
+# 获取文件 URL
+file_url = client.files.get_url("collection_id", "record_id", "filename.jpg")
+
+# 下载文件
+file_content = await client.files.download_file(
+    "collection_id",
+    "record_id",
+    "filename.jpg",
+    options={"thumb": "100x100"}
+)
+```
+
+## 实时订阅
+
+```python
+# 订阅单条记录的变更
+async def on_record_change(event):
+    print("Record changed:", event)
+
+unsubscribe = await client.collection("posts").subscribe(
+    on_record_change,
+    "RECORD_ID"
+)
+
+# 订阅整个集合的变更
+unsubscribe_all = await client.collection("posts").subscribe_all(on_record_change)
+
+# 取消订阅
+await unsubscribe()
+await unsubscribe_all()
+
+# 关闭实时连接
+await client.realtime.close()
+```
+
+## 集合管理
+
+```python
+# 创建集合
+collection = await client.collections.create({
+    "name": "posts",
+    "type": "base",
+    "schema": [
+        {
+            "name": "title",
+            "type": "text",
+            "required": True
+        }
+    ]
+})
+
+# 获取集合列表
+collections = await client.collections.get_full_list()
+
+# 更新集合
+updated = await client.collections.update("COLLECTION_ID", {
+    "name": "new_name"
+})
+
+# 删除集合
+await client.collections.delete("COLLECTION_ID")
+
+# 导入集合
+await client.collections.import_collections([
+    {
+        "name": "posts",
+        "type": "base",
+        "schema": [...]
+    }
+], delete_missing=False)
+```
+
+## 备份管理
+
+```python
+# 创建备份
+await client.backups.create("backup_name.zip")
+
+# 获取备份列表
+backups = await client.backups.get_full_list()
+
+# 下载备份
+backup_content = await client.backups.download("backup_name.zip")
+
+# 还原备份
+await client.backups.restore("backup_name.zip")
+
+# 删除备份
+await client.backups.delete("backup_name.zip")
+```
+
+## 错误处理
+
+库中定义了以下异常类型：
+- `PocketBaseError`: 基础异常类
+- `PocketBaseBadRequestError`: 400 错误
+- `PocketBaseUnauthorizedError`: 401 错误
+- `PocketBaseForbiddenError`: 403 错误
+- `PocketBaseNotFoundError`: 404 错误
+- `PocketBaseServerError`: 500 错误
+
+使用 try-except 处理异常:
+
+```python
+from pocketbase import PocketBaseError, PocketBaseNotFoundError
+
+try:
+    record = await client.collection("posts").get_one("NON_EXISTENT_ID")
+except PocketBaseNotFoundError:
+    print("记录不存在")
+except PocketBaseError as e:
+    print(f"发生错误: {e.status} - {e.data}")
+```
+
+## 高级用法
+
+### 自定义请求处理
+
+可以通过重写 `before_send` 和 `after_send` 方法来自定义请求处理：
+
+```python
+class MyPocketBase(PocketBase):
+    async def before_send(self, request):
+        # 在发送请求前修改请求
+        request.headers["Custom-Header"] = "value"
+        return request
+
+    async def after_send(self, response):
+        # 在收到响应后处理响应
+        print(f"Response status: {response.status_code}")
+        return response
+
+client = MyPocketBase("http://127.0.0.1:8090")
+```
+
+### 设置自定义请求头
+
+```python
+class MyPocketBase(PocketBase):
+    def headers(self) -> dict[str, str]:
+        headers = super().headers()
+        headers["Custom-Header"] = "value"
+        return headers
+
+client = MyPocketBase("http://127.0.0.1:8090")
+```
+
+记住，这个库是异步的，所有的操作都需要使用 `async/await` 语法。确保在异步环境中使用这些方法。
+
 
 <hr/>
 <a href="#readme-top">:arrow_up_small: Back to top</a>
